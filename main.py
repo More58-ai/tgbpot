@@ -88,19 +88,14 @@ TEXTS = {
 def delete_msg_after_delay(chat_id, message_id, delay=600):
     time.sleep(delay)
     try: bot.delete_message(chat_id, message_id)
-    except Exception as e: print(f"Не вдалося видалити повідомлення: {e}")
+    except Exception as e: print(f"Не вдалося видалити: {e}")
 
-@bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['roles'], TEXTS['ru']['roles']])
-def send_roles(message):
-    try:
-        # ID повідомлення з каналу ролей (за посиланням воно 4)
-        ROLE_MESSAGE_ID = 4
-        
-        # Копіюємо повідомлення з каналу користувачеві
-        bot.copy_message(message.chat.id, CHANNEL_ROLES_ID, ROLE_MESSAGE_ID)
-    except Exception as e:
-        print(f"Помилка при копіюванні: {e}")
-        bot.send_message(message.chat.id, "❌ Помилка: Не вдалося отримати ролі. Перевірте, чи є бот у каналі.")
+@bot.message_handler(commands=['start'])
+def start(message):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🇺🇦 Українська", callback_data="lang_uk"),
+               types.InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"))
+    bot.send_message(message.chat.id, "Виберіть мову / Выберите язык:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('lang_'))
 def set_language(call):
@@ -108,9 +103,7 @@ def set_language(call):
     user_lang[call.message.chat.id] = lang
     bot.delete_message(call.message.chat.id, call.message.message_id)
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(types.KeyboardButton(TEXTS[lang]['roles']), 
-               types.KeyboardButton(TEXTS[lang]['anketa']),
-               types.KeyboardButton(TEXTS[lang]['rules_btn']))
+    markup.add(types.KeyboardButton(TEXTS[lang]['roles']), types.KeyboardButton(TEXTS[lang]['anketa']), types.KeyboardButton(TEXTS[lang]['rules_btn']))
     bot.send_message(call.message.chat.id, TEXTS[lang]['welcome'], reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['rules_btn'], TEXTS['ru']['rules_btn']])
@@ -120,20 +113,14 @@ def send_rules(message):
 @bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['roles'], TEXTS['ru']['roles']])
 def send_roles(message):
     try:
-        # Отримуємо останнє повідомлення з каналу
-        # Бот МАЄ БУТИ адміністратором у CHANNEL_ROLES_ID
-        messages = bot.get_chat_history(CHANNEL_ROLES_ID, limit=1)
-        if messages and len(messages) > 0:
-            bot.copy_message(message.chat.id, CHANNEL_ROLES_ID, messages[0].message_id)
-        else:
-            bot.send_message(message.chat.id, "❌ Повідомлень у каналі не знайдено.")
+        # Тут вказано ID повідомлення 4, як ви просили
+        bot.copy_message(message.chat.id, CHANNEL_ROLES_ID, 4)
     except Exception as e:
-        bot.send_message(message.chat.id, f"❌ Помилка: Не вдалося отримати ролі. Перевірте права бота.\n{e}")
+        bot.send_message(message.chat.id, "❌ Помилка: Не вдалося отримати ролі. Перевірте, чи є бот адміністратором каналу.")
 
 @bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['anketa'], TEXTS['ru']['anketa']])
 def start_anketa(message):
     lang = user_lang.get(message.chat.id, 'uk')
-    bot.send_message(message.chat.id, "💡 Нагадування: Вільні ролі та правила можна переглянути у головному меню.")
     username = f"@{message.from_user.username}" if message.from_user.username else "Приховано"
     user_steps[message.chat.id] = {'username': username}
     bot.send_message(message.chat.id, TEXTS[lang]['info'])
@@ -152,11 +139,9 @@ def process_age(message):
     user_steps[user_id]['age'] = message.text
     data = user_steps[user_id]
     markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton(TEXTS[lang]['accept'], callback_data=f"accept_{user_id}"),
-        types.InlineKeyboardButton(TEXTS[lang]['decline'], callback_data=f"decline_{user_id}"),
-        types.InlineKeyboardButton(TEXTS[lang]['review'], callback_data=f"review_{user_id}")
-    )
+    markup.add(types.InlineKeyboardButton(TEXTS[lang]['accept'], callback_data=f"accept_{user_id}"),
+               types.InlineKeyboardButton(TEXTS[lang]['decline'], callback_data=f"decline_{user_id}"),
+               types.InlineKeyboardButton(TEXTS[lang]['review'], callback_data=f"review_{user_id}"))
     admin_text = f"{TEXTS[lang]['admin_text']}\n--------------------------\n{TEXTS[lang]['char']}: {data['char_name']}\n{TEXTS[lang]['user']}: {data['username']}\n{TEXTS[lang]['age']}: {data['age']}\n--------------------------"
     bot.send_message(CHANNEL_ADMIN_ID, admin_text, reply_markup=markup)
     bot.send_message(user_id, TEXTS[lang]['success'])
@@ -165,18 +150,13 @@ def process_age(message):
 def handle_admin_buttons(call):
     parts = call.data.split('_')
     action, target_user_id = parts[0], int(parts[1])
-    
     if action == "accept":
         msg = "🎉 ВІТАЄМО! Вашу анкету СХВАЛЕНО. Посилання: https://t.me/+bnvTpMG_lyhlZDky\n⚠️ Видалиться через 10 хвилин."
         sent = bot.send_message(target_user_id, msg)
         threading.Thread(target=delete_msg_after_delay, args=(target_user_id, sent.message_id, 600)).start()
-    elif action == "decline":
-        bot.send_message(target_user_id, "😔 Вашу анкету було ВІДХИЛЕНО.")
-    elif action == "review":
-        bot.send_message(target_user_id, "⏳ Ваша анкета НА РОЗГЛЯДІ.")
-    
+    elif action == "decline": bot.send_message(target_user_id, "😔 Вашу анкету було ВІДХИЛЕНО.")
+    elif action == "review": bot.send_message(target_user_id, "⏳ Ваша анкета НА РОЗГЛЯДІ.")
     bot.edit_message_text(f"{call.message.text}\n\n📢 СТАТУС: {action.upper()}", CHANNEL_ADMIN_ID, call.message.message_id)
     bot.answer_callback_query(call.id, text=f"Статус: {action}")
 
 bot.polling(none_stop=True)
-
