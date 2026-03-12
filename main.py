@@ -88,12 +88,22 @@ def delete_msg_after_delay(chat_id, message_id, delay=600):
     try: bot.delete_message(chat_id, message_id)
     except: pass
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🇺🇦 Українська", callback_data="lang_uk"),
-               types.InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"))
-    bot.send_message(message.chat.id, "Виберіть мову / Выберите язык:", reply_markup=markup)
+@bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['roles'], TEXTS['ru']['roles']])
+def send_roles(message):
+    try:
+        # Отримуємо історію повідомлень каналу
+        # Важливо: Бот ПОВИНЕН бути адміністратором у цьому каналі
+        messages = bot.get_chat_history(CHANNEL_ROLES_ID, limit=1)
+        
+        if messages and len(messages) > 0:
+            last_msg = messages[0]
+            bot.copy_message(message.chat.id, CHANNEL_ROLES_ID, last_msg.message_id)
+        else:
+            bot.send_message(message.chat.id, "❌ Повідомлень у каналі не знайдено.")
+    except Exception as e:
+        # Виводимо помилку в консоль, щоб зрозуміти, чому не працює
+        print(f"Помилка при отриманні ролей: {e}")
+        bot.send_message(message.chat.id, f"❌ Помилка: Не вдалося отримати ролі. Перевірте, чи є бот адміністратором у каналі.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('lang_'))
 def set_language(call):
@@ -162,3 +172,4 @@ def handle_admin_buttons(call):
     bot.edit_message_text(f"{call.message.text}\n\n📢 СТАТУС: {action.upper()}", CHANNEL_ADMIN_ID, call.message.message_id)
 
 bot.polling(none_stop=True)
+
