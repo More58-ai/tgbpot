@@ -106,14 +106,8 @@ def set_language(call):
     lang = call.data.split('_')[1]
     user_lang[call.message.chat.id] = lang
     bot.delete_message(call.message.chat.id, call.message.message_id)
-    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(
-        types.KeyboardButton(TEXTS[lang]['roles']), 
-        types.KeyboardButton(TEXTS[lang]['anketa']), 
-        types.KeyboardButton(TEXTS[lang]['rules_btn']),
-        types.KeyboardButton(TEXTS[lang]['news_btn'])
-    )
+    markup.add(types.KeyboardButton(TEXTS[lang]['roles']), types.KeyboardButton(TEXTS[lang]['anketa']), types.KeyboardButton(TEXTS[lang]['rules_btn']), types.KeyboardButton(TEXTS[lang]['news_btn']))
     bot.send_message(call.message.chat.id, TEXTS[lang]['welcome'], reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['news_btn'], TEXTS['ru']['news_btn']])
@@ -126,12 +120,11 @@ def send_rules(message):
     bot.send_message(message.chat.id, RULES_TEXT)
 
 @bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['roles'], TEXTS['ru']['roles']])
-def send_roles_copy(message):
+def send_roles(message):
     try:
-        # Копіюємо повідомлення №4 з каналу з ролями
         bot.copy_message(message.chat.id, CHANNEL_ROLES_ID, 4)
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ Помилка: Не вдалося отримати ролі. Перевірте доступ бота до каналу.")
+        bot.send_message(message.chat.id, "❌ Помилка: Не вдалося отримати ролі. Перевірте, чи є бот адміністратором каналу.")
 
 @bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['anketa'], TEXTS['ru']['anketa']])
 def start_anketa(message):
@@ -144,50 +137,44 @@ def start_anketa(message):
 
 def process_name(message):
     lang = user_lang.get(message.chat.id, 'uk')
-    if message.chat.id in user_steps:
-        user_steps[message.chat.id]['char_name'] = message.text
-        bot.send_message(message.chat.id, TEXTS[lang]['step2'])
-        bot.register_next_step_handler(message, process_age)
+    user_steps[message.chat.id]['char_name'] = message.text
+    bot.send_message(message.chat.id, TEXTS[lang]['step2'])
+    bot.register_next_step_handler(message, process_age)
 
 def process_age(message):
     lang = user_lang.get(message.chat.id, 'uk')
     user_id = message.chat.id
-    if user_id in user_steps:
-        user_steps[user_id]['age'] = message.text
-        data = user_steps[user_id]
-        
-        # Кнопки для адмін-каналу
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        markup.add(types.InlineKeyboardButton(TEXTS[lang]['accept'], callback_data=f"accept_{user_id}"),
-                   types.InlineKeyboardButton(TEXTS[lang]['decline'], callback_data=f"decline_{user_id}"),
-                   types.InlineKeyboardButton(TEXTS[lang]['review'], callback_data=f"review_{user_id}"))
-        
-        admin_text = (f"{TEXTS[lang]['admin_text']}\n"
-                     f"--------------------------\n"
-                     f"{TEXTS[lang]['char']}: {data['char_name']}\n"
-                     f"{TEXTS[lang]['user']}: {data['username']}\n"
-                     f"{TEXTS[lang]['age']}: {data['age']}\n"
-                     f"--------------------------")
-        
-        bot.send_message(CHANNEL_ADMIN_ID, admin_text, reply_markup=markup)
-        bot.send_message(user_id, TEXTS[lang]['success'])
+    user_steps[user_id]['age'] = message.text
+    data = user_steps[user_id]
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(types.InlineKeyboardButton(TEXTS[lang]['accept'], callback_data=f"accept_{user_id}"),
+               types.InlineKeyboardButton(TEXTS[lang]['decline'], callback_data=f"decline_{user_id}"),
+               types.InlineKeyboardButton(TEXTS[lang]['review'], callback_data=f"review_{user_id}"))
+    admin_text = f"{TEXTS[lang]['admin_text']}\n--------------------------\n{TEXTS[lang]['char']}: {data['char_name']}\n{TEXTS[lang]['user']}: {data['username']}\n{TEXTS[lang]['age']}: {data['age']}\n--------------------------"
+    bot.send_message(CHANNEL_ADMIN_ID, admin_text, reply_markup=markup)
+    bot.send_message(user_id, TEXTS[lang]['success'])
 
 @bot.callback_query_handler(func=lambda call: not call.data.startswith('lang_'))
 def handle_admin_buttons(call):
     parts = call.data.split('_')
     action, target_user_id = parts[0], int(parts[1])
-    
     if action == "accept":
-        msg = "🎉 ВІТАЄМО! Вашу анкету СХВАЛЕНО. Посилання на вступ: https://t.me/+bnvTpMG_lyhlZDky\n⚠️ Повідомлення видалиться через 10 хвилин."
+        msg = "🎉 ВІТАЄМО! Вашу анкету СХВАЛЕНО. Посилання: https://t.me/+bnvTpMG_lyhlZDky\n⚠️ Видалиться через 10 хвилин."
         sent = bot.send_message(target_user_id, msg)
         threading.Thread(target=delete_msg_after_delay, args=(target_user_id, sent.message_id, 600)).start()
+        bot.edit_message_text(f"{call.message.text}\n\n📢 СТАТУС: СХВАЛЕНО ✅", CHANNEL_ADMIN_ID, call.message.message_id)
     elif action == "decline":
-        bot.send_message(target_user_id, "😔 На жаль, вашу анкету було ВІДХИЛЕНО.")
+        msg_prompt = bot.send_message(CHANNEL_ADMIN_ID, "📝 Напишіть причину відхилення:")
+        bot.register_next_step_handler(msg_prompt, process_decline_reason, target_user_id, call.message.text, call.message.message_id)
     elif action == "review":
-        bot.send_message(target_user_id, "⏳ Ваша анкета знаходиться НА РОЗГЛЯДІ. Очікуйте відповіді.")
-    
-    # Оновлюємо статус в адмін-каналі
-    bot.edit_message_text(f"{call.message.text}\n\n📢 СТАТУС: {action.upper()}", CHANNEL_ADMIN_ID, call.message.message_id)
-    bot.answer_callback_query(call.id, text=f"Статус змінено на: {action}")
+        bot.send_message(target_user_id, "⏳ Ваша анкета НА РОЗГЛЯДІ.")
+        bot.edit_message_text(f"{call.message.text}\n\n📢 СТАТУС: РОЗГЛЯД ⏳", CHANNEL_ADMIN_ID, call.message.message_id, reply_markup=call.message.reply_markup)
+    bot.answer_callback_query(call.id)
+
+def process_decline_reason(message, target_user_id, original_text, admin_msg_id):
+    reason = message.text
+    bot.send_message(target_user_id, f"😔 Вашу анкету було ВІДХИЛЕНО.\n\n⚠️ Причина: {reason}")
+    bot.edit_message_text(f"{original_text}\n\n📢 СТАТУС: ВІДХИЛЕНО ❌\nПричина: {reason}", CHANNEL_ADMIN_ID, admin_msg_id)
+    bot.send_message(CHANNEL_ADMIN_ID, "✅ Причину надіслано.")
 
 bot.polling(none_stop=True)
