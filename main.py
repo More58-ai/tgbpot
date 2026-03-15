@@ -180,7 +180,7 @@ def handle_admin_buttons(call):
 def handle_reasons(call):
     _, reason_type, target_user_id, admin_msg_id = call.data.split('_')
     target_user_id, admin_msg_id = int(target_user_id), int(admin_msg_id)
-    reasons = {"age": "Не підходить вік.", "taken": "Роль вже зайнята.", "dm": "Зверніться до адміністратора в особисті."}
+    reasons = {"age": "Не підходить вік.", "taken": "Роль вже зайнята.", "dm": "Адміністратор напише вам причину в особисті повідомлення."}
     reason_text = reasons.get(reason_type)
     bot.send_message(target_user_id, f"😔 Вашу анкету було ВІДХИЛЕНО.\n\n⚠️ Причина: {reason_text}")
     msg = bot.get_message(CHANNEL_ADMIN_ID, admin_msg_id)
