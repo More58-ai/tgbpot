@@ -124,7 +124,7 @@ def send_roles(message):
     try:
         bot.copy_message(message.chat.id, CHANNEL_ROLES_ID, 4)
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ Помилка: Не вдалося отримати ролі. Перевірте, чи є бот адміністратором каналу.")
+        bot.send_message(message.chat.id, "❌ Помилка: Не вдалося отримати ролі.")
 
 @bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['anketa'], TEXTS['ru']['anketa']])
 def start_anketa(message):
@@ -154,7 +154,7 @@ def process_age(message):
     bot.send_message(CHANNEL_ADMIN_ID, admin_text, reply_markup=markup)
     bot.send_message(user_id, TEXTS[lang]['success'])
 
-@bot.callback_query_handler(func=lambda call: not call.data.startswith('lang_'))
+@bot.callback_query_handler(func=lambda call: not call.data.startswith('lang_') and not call.data.startswith('reason_'))
 def handle_admin_buttons(call):
     parts = call.data.split('_')
     action, target_user_id = parts[0], int(parts[1])
@@ -164,17 +164,28 @@ def handle_admin_buttons(call):
         threading.Thread(target=delete_msg_after_delay, args=(target_user_id, sent.message_id, 600)).start()
         bot.edit_message_text(f"{call.message.text}\n\n📢 СТАТУС: СХВАЛЕНО ✅", CHANNEL_ADMIN_ID, call.message.message_id)
     elif action == "decline":
-        msg_prompt = bot.send_message(CHANNEL_ADMIN_ID, "📝 Напишіть причину відхилення:")
-        bot.register_next_step_handler(msg_prompt, process_decline_reason, target_user_id, call.message.text, call.message.message_id)
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("❌ Не підходить вік", callback_data=f"reason_age_{target_user_id}_{call.message.message_id}"),
+            types.InlineKeyboardButton("❌ Роль вже зайнята", callback_data=f"reason_taken_{target_user_id}_{call.message.message_id}"),
+            types.InlineKeyboardButton("❌ Напишу в особисті", callback_data=f"reason_dm_{target_user_id}_{call.message.message_id}")
+        )
+        bot.send_message(CHANNEL_ADMIN_ID, "📝 Оберіть причину відхилення:", reply_markup=markup)
     elif action == "review":
         bot.send_message(target_user_id, "⏳ Ваша анкета НА РОЗГЛЯДІ.")
         bot.edit_message_text(f"{call.message.text}\n\n📢 СТАТУС: РОЗГЛЯД ⏳", CHANNEL_ADMIN_ID, call.message.message_id, reply_markup=call.message.reply_markup)
     bot.answer_callback_query(call.id)
 
-def process_decline_reason(message, target_user_id, original_text, admin_msg_id):
-    reason = message.text
-    bot.send_message(target_user_id, f"😔 Вашу анкету було ВІДХИЛЕНО.\n\n⚠️ Причина: {reason}")
-    bot.edit_message_text(f"{original_text}\n\n📢 СТАТУС: ВІДХИЛЕНО ❌\nПричина: {reason}", CHANNEL_ADMIN_ID, admin_msg_id)
-    bot.send_message(CHANNEL_ADMIN_ID, "✅ Причину надіслано.")
+@bot.callback_query_handler(func=lambda call: call.data.startswith('reason_'))
+def handle_reasons(call):
+    _, reason_type, target_user_id, admin_msg_id = call.data.split('_')
+    target_user_id, admin_msg_id = int(target_user_id), int(admin_msg_id)
+    reasons = {"age": "Не підходить вік.", "taken": "Роль вже зайнята.", "dm": "Зверніться до адміністратора в особисті."}
+    reason_text = reasons.get(reason_type)
+    bot.send_message(target_user_id, f"😔 Вашу анкету було ВІДХИЛЕНО.\n\n⚠️ Причина: {reason_text}")
+    msg = bot.get_message(CHANNEL_ADMIN_ID, admin_msg_id)
+    bot.edit_message_text(f"{msg.text}\n\n📢 СТАТУС: ВІДХИЛЕНО ❌\nПричина: {reason_text}", CHANNEL_ADMIN_ID, admin_msg_id)
+    bot.answer_callback_query(call.id, text="Причину надіслано")
+    bot.delete_message(CHANNEL_ADMIN_ID, call.message.message_id)
 
 bot.polling(none_stop=True)
