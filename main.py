@@ -11,8 +11,9 @@ MY_ID = 1895938298
 bot = telebot.TeleBot(TOKEN)
 user_steps = {}
 user_lang = {}
-user_ids = set() # База для розсилки
+user_ids = set()
 
+# --- ТЕКСТ ПРАВИЛ ---
 RULES_TEXT = """
 🤩🤩🤩🤩🤩🤩🤩
 🤩{Оᴄᴋᴏᴩбᴧᴇния}🤩
@@ -112,11 +113,11 @@ def admin_broadcast(message):
 def send_broadcast_all(message):
     text = message.text
     count = 0
-    for uid in user_ids:
+    for uid in list(user_ids):
         try:
             bot.send_message(uid, text)
             count += 1
-        except: pass
+        except: user_ids.remove(uid)
     bot.send_message(message.chat.id, f"✅ Розсилка завершена. Отримали: {count} користувачів.")
 
 @bot.message_handler(func=lambda message: message.text in [TEXTS['uk']['news_btn'], TEXTS['ru']['news_btn']])
@@ -142,16 +143,16 @@ def start_anketa(message):
     bot.register_next_step_handler(message, process_name)
 
 def process_name(message):
-    lang = user_lang.get(message.chat.id, 'uk')
     user_steps[message.chat.id]['char_name'] = message.text
+    lang = user_lang.get(message.chat.id, 'uk')
     bot.send_message(message.chat.id, TEXTS[lang]['step2'])
     bot.register_next_step_handler(message, process_age)
 
 def process_age(message):
-    lang = user_lang.get(message.chat.id, 'uk')
     user_id = message.chat.id
     user_steps[user_id]['age'] = message.text
     data = user_steps[user_id]
+    lang = user_lang.get(user_id, 'uk')
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(types.InlineKeyboardButton(TEXTS[lang]['accept'], callback_data=f"accept_{user_id}"),
                types.InlineKeyboardButton(TEXTS[lang]['decline'], callback_data=f"decline_{user_id}"),
@@ -165,7 +166,7 @@ def handle_admin_buttons(call):
     parts = call.data.split('_')
     action, target_user_id = parts[0], int(parts[1])
     if action == "accept":
-        msg = "🎉 ВІТАЄМО! Вашу анкету СХВАЛЕНО."
+        msg = "🎉 ВІТАЄМО! Вашу анкету СХВАЛЕНО. Посилання: https://t.me/+bnvTpMG_lyhlZDky\n⚠️ Видалиться через 10 хвилин."
         sent = bot.send_message(target_user_id, msg)
         threading.Thread(target=delete_msg_after_delay, args=(target_user_id, sent.message_id, 600)).start()
         bot.edit_message_text(f"{call.message.text}\n\n📢 СТАТУС: СХВАЛЕНО ✅", CHANNEL_ADMIN_ID, call.message.message_id)
@@ -184,10 +185,13 @@ def handle_admin_buttons(call):
 def handle_reasons(call):
     _, reason_type, target_user_id, admin_msg_id = call.data.split('_')
     reasons = {"age": "Не підходить вік.", "taken": "Роль вже зайнята.", "dm": "Зверніться до адміністратора в особисті."}
-    bot.send_message(int(target_user_id), f"😔 Вашу анкету було ВІДХИЛЕНО.\n\n⚠️ Причина: {reasons.get(reason_type)}")
-    msg = bot.get_message(CHANNEL_ADMIN_ID, int(admin_msg_id))
-    bot.edit_message_text(f"{msg.text}\n\n📢 СТАТУС: ВІДХИЛЕНО ❌\nПричина: {reasons.get(reason_type)}", CHANNEL_ADMIN_ID, int(admin_msg_id))
-    bot.delete_message(CHANNEL_ADMIN_ID, call.message.message_id)
-    bot.answer_callback_query(call.id, text="Причину надіслано")
+    reason = reasons.get(reason_type)
+    try:
+        bot.send_message(int(target_user_id), f"😔 Вашу анкету було ВІДХИЛЕНО.\n\n⚠️ Причина: {reason}")
+        msg = bot.get_message(CHANNEL_ADMIN_ID, int(admin_msg_id))
+        bot.edit_message_text(f"{msg.text}\n\n📢 СТАТУС: ВІДХИЛЕНО ❌\nПричина: {reason}", CHANNEL_ADMIN_ID, int(admin_msg_id))
+        bot.delete_message(CHANNEL_ADMIN_ID, call.message.message_id)
+        bot.answer_callback_query(call.id, text="Відправлено")
+    except: bot.answer_callback_query(call.id, text="Помилка")
 
 bot.polling(none_stop=True)
